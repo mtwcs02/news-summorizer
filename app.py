@@ -11,7 +11,14 @@ st.write("오늘의 주요 소식을 AI가 요약해 드립니다.")
 # 🔑 API 키 설정 (사용자님의 키를 넣어주세요)
 GOOGLE_API_KEY = "AIzaSyB7HNe_EoIzzMErO687P4naCYOdUSZFzuU"
 genai.configure(api_key=GOOGLE_API_KEY)
-model = genai.GenerativeModel('gemini-1.5-flash')
+
+# 🛠️ [중요] 사용 가능한 최신 모델을 자동으로 찾아주는 기능입니다.
+@st.cache_resource
+def load_model():
+    models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+    return genai.GenerativeModel(model_name=models[0])
+
+model = load_model()
 
 # 검색어 입력창
 keyword = st.text_input("궁금한 종목이나 키워드를 입력하세요", value="SGC에너지")
@@ -21,6 +28,7 @@ if st.button("뉴스 요약 시작! 🔥"):
         # 뉴스 가져오기
         url = f"https://news.google.com/rss/search?q={keyword}&hl=ko&gl=KR&ceid=KR:ko"
         response = requests.get(url)
+        # lxml 도구를 사용하여 뉴스를 읽습니다.
         soup = BeautifulSoup(response.content, features="xml")
         items = soup.find_all('item')
         
