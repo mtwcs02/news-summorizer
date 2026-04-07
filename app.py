@@ -11,7 +11,7 @@ st.set_page_config(page_title="나만의 스마트 뉴스 비서", page_icon="�
 with st.sidebar:
     st.header("⚙️ 맞춤 설정")
     level_mode = st.radio("요약 눈높이", ("초등학생용 🎒", "중학생용 📝", "전문가용 💼"), index=2)
-    st.info("💡 1시간 동안 같은 뉴스는 AI가 기억해서 즉시 보여줍니다! (에러 방지)")
+    st.info("💡 실시간 뉴스 요약! (엄마뉴스)")
 
 st.title("🗞️ AI 맞춤 뉴스 브리핑")
 
