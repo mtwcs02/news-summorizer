@@ -2,13 +2,14 @@ import streamlit as st
 import requests
 from bs4 import BeautifulSoup
 import google.generativeai as genai
+from datetime import datetime
 
 # 1. 앱 화면 설정
-st.set_page_config(page_title="나만의 뉴스 비서", page_icon="🤖")
-st.title("🤖 나만의 AI 뉴스 비서")
-st.write("오늘의 주요 소식을 AI가 깔끔하게 3줄 요약해 드립니다.")
+st.set_page_config(page_title="나만의 스마트 뉴스 비서", page_icon="📈")
+st.title("📈 AI 맞춤 뉴스 브리핑")
+st.write("카테고리를 누르거나 키워드를 직접 입력해 보세요.")
 
-# 2. 🔐 비밀 금고(Secrets)에서 API 키 가져오기
+# 2. 🔐 비밀 금고(Secrets) 설정
 try:
     GOOGLE_API_KEY = st.secrets["GEMINI_API_KEY"]
     genai.configure(api_key=GOOGLE_API_KEY)
@@ -16,51 +17,76 @@ except:
     st.error("스트림릿 Secrets에 API 키를 등록해 주세요!")
     st.stop()
 
-# 3. 🛠️ [중요] 최신 모델을 자동으로 찾아내는 기능
+# 3. AI 모델 로드
 @st.cache_resource
 def get_working_model():
-    # 사용 가능한 모델 목록을 가져옵니다.
     available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-    
-    # 1순위: gemini-1.5-flash / 2순위: gemini-pro / 3순위: 목록의 첫 번째 모델
-    if 'models/gemini-1.5-flash' in available_models:
-        model_name = 'models/gemini-1.5-flash'
-    elif 'models/gemini-pro' in available_models:
-        model_name = 'models/gemini-pro'
-    else:
-        model_name = available_models[0]
-    
+    model_name = 'models/gemini-1.5-flash' if 'models/gemini-1.5-flash' in available_models else available_models[0]
     return genai.GenerativeModel(model_name)
 
-try:
-    model = get_working_model()
-except Exception as e:
-    st.error(f"AI 모델을 불러오는 데 실패했습니다: {e}")
-    st.stop()
+model = get_working_model()
 
-# 4. 검색어 입력창
-keyword = st.text_input("궁금한 종목이나 키워드를 입력하세요", value="SGC에너지")
+# --- 4. 메뉴 구성 ---
+st.markdown("### 📍 빠른 카테고리")
+categories = ["오늘의 주요 뉴스", "정치", "경제", "사회"]
+cols1 = st.columns(len(categories))
+selected_keyword = ""
 
-# 5. 실행 버튼 클릭 시 작동
-if st.button("뉴스 요약 시작! 🔥"):
-    with st.spinner('뉴스를 분석 중입니다...'):
+for i, category in enumerate(categories):
+    if cols1[i].button(category, use_container_width=True):
+        selected_keyword = category
+
+st.markdown("### 💎 나의 관심 종목")
+my_stocks = ["SGC에너지", "리플", "미국 증시", "비트코인"]
+cols2 = st.columns(len(my_stocks))
+
+for i, stock in enumerate(my_stocks):
+    if cols2[i].button(stock, use_container_width=True):
+        selected_keyword = stock
+
+st.divider()
+st.markdown("### 🔍 직접 검색")
+user_input = st.text_input("궁금한 뉴스 키워드를 입력하세요", value=selected_keyword, placeholder="예: 삼성전자, 부동산 대책 등")
+
+# --- 5. 뉴스 요약 로직 (날짜 추출 기능 추가) ---
+if user_input:
+    with st.spinner(f"'{user_input}' 뉴스를 AI가 분석 중입니다..."):
         try:
-            # 구글 뉴스 가져오기
-            url = f"https://news.google.com/rss/search?q={keyword}&hl=ko&gl=KR&ceid=KR:ko"
+            url = f"https://news.google.com/rss/search?q={user_input}&hl=ko&gl=KR&ceid=KR:ko"
             response = requests.get(url)
             soup = BeautifulSoup(response.content, features="xml")
             items = soup.find_all('item')
             
             if items:
-                all_titles = "\n".join([f"- {item.title.text}" for item in items[:5]])
-                prompt = f"다음 뉴스 제목들을 읽고 핵심 소식을 한글로 3줄 요약해줘:\n{all_titles}"
+                news_data = []
+                for item in items[:5]:
+                    title = item.title.text
+                    # 구글 뉴스의 날짜 형식(RFC 822)을 읽기 쉬운 한글 형식으로 변환
+                    raw_date = item.pubDate.text
+                    try:
+                        # 예: "Tue, 07 Apr 2026 10:30:00 GMT" -> "2026-04-07"
+                        date_obj = datetime.strptime(raw_date, '%a, %d %b %Y %H:%M:%S %Z')
+                        clean_date = date_obj.strftime('%Y-%m-%d %H:%M')
+                    except:
+                        clean_date = raw_date # 변환 실패 시 원본 표시
+                    
+                    news_data.append({"title": title, "date": clean_date})
+
+                # AI 요약용 텍스트 생성
+                all_titles = "\n".join([f"- {n['title']}" for n in news_data])
                 
-                # AI 실행
+                prompt = f"다음 뉴스 제목들을 읽고 '{user_input}'의 핵심 내용을 한글로 3줄 요약해줘:\n{all_titles}"
                 result = model.generate_content(prompt)
                 
-                st.success(f"✨ '{keyword}' 뉴스 요약 완료!")
+                # 결과 출력
+                st.success(f"✅ '{user_input}' 요약 리포트")
                 st.info(result.text)
+                
+                # 📅 날짜 정보 표시 섹션 추가
+                with st.expander("📌 참고한 뉴스 소스 및 날짜 확인"):
+                    for n in news_data:
+                        st.write(f"⏱️ **{n['date']}** | {n['title']}")
             else:
-                st.warning("관련 뉴스를 찾지 못했습니다.")
+                st.warning(f"'{user_input}' 관련 최신 소식이 없습니다.")
         except Exception as e:
-            st.error(f"작동 중 오류가 발생했습니다: {e}")
+            st.error(f"오류가 발생했습니다: {e}")
