@@ -17,14 +17,27 @@ with st.sidebar:
 
 st.title("🗞️ AI 맞춤 뉴스 브리핑")
 
-# 2. 🔐 AI 모델 설정 (404 에러 방지용)
-try:
-    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-    # 404 에러를 피하기 위해 가장 표준적인 모델 이름을 사용합니다.
-    # 'models/'를 붙이지 않고 호출해보고, 안되면 목록에서 찾아내는 방식입니다.
-    model = genai.GenerativeModel('gemini-1.5-flash')
-except Exception as e:
-    st.error(f"AI 연결 설정 중 오류: {e}")
+# 2. 🔐 [핵심 수정] AI 모델 자동 탐색 로직 (404 에러 방지)
+@st.cache_resource
+def get_working_model():
+    try:
+        genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+        # 현재 사용 가능한 모델 목록을 직접 확인합니다.
+        models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+        
+        # 1순위: 가장 빠르고 최신인 flash 모델
+        for m in models:
+            if 'gemini-1.5-flash' in m: return genai.GenerativeModel(m)
+        # 2순위: 그 외 사용 가능한 첫 번째 모델
+        if models: return genai.GenerativeModel(models[0])
+        return None
+    except Exception as e:
+        st.error(f"모델을 찾는 중 오류 발생: {e}")
+        return None
+
+model = get_working_model()
+if not model:
+    st.error("🚨 사용할 수 있는 AI 모델을 찾지 못했습니다. API 키를 확인해주세요.")
     st.stop()
 
 # 3. 메뉴 구성
@@ -68,19 +81,13 @@ if user_input:
             if items:
                 all_titles = "\n".join([f"- {i.title.text}" for i in items])
                 
-                # 프롬프트 설정 (풍성한 요약 버전)
+                # 프롬프트 설정
                 role = "자상한 이모" if "초등" in level_mode else ("선생님" if "중등" in level_mode else "여성 아나운서")
-                prompt = f"너는 {role}야. 키워드 '{user_input}'에 대한 뉴스 {len(items)}개를 읽고 3가지 핵심 내용을 풍성하게 요약해줘."
+                prompt = f"너는 {role}야. 키워드 '{user_input}'에 대한 뉴스들을 읽고 3가지 핵심 내용을 풍성하게 요약해줘."
                 
-                # AI 실행 (여기서 에러가 날 확률이 높으므로 한 번 더 감쌉니다)
-                try:
-                    result = model.generate_content(prompt)
-                    summary = result.text
-                except:
-                    # 'gemini-1.5-flash'가 안되면 'gemini-pro'로 재시도
-                    alt_model = genai.GenerativeModel('gemini-pro')
-                    result = alt_model.generate_content(prompt)
-                    summary = result.text
+                # AI 요약 실행
+                result = model.generate_content(prompt)
+                summary = result.text
                 
                 st.success(f"✅ {level_mode} 맞춤 요약 완료")
                 st.markdown(summary)
@@ -95,9 +102,9 @@ if user_input:
                     for i in items:
                         st.markdown(f"- [{i.title.text}]({i.link.text})")
             else:
-                st.warning("뉴스를 찾을 수 없습니다.")
+                st.warning("뉴스를 찾을 수 없습니다. 키워드를 바꿔보세요!")
         except Exception as e:
             if "429" in str(e):
-                st.error("🚨 구글 AI가 잠시 쉬고 싶어 하네요! 1분만 기다렸다가 다시 시도해 주세요.")
+                st.error("🚨 구글 AI가 너무 바쁘대요! 1분만 기다렸다가 다시 눌러주세요.")
             else:
                 st.error(f"오류가 발생했습니다: {e}")
