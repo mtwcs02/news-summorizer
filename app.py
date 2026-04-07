@@ -17,30 +17,26 @@ with st.sidebar:
 
 st.title("🗞️ AI 맞춤 뉴스 브리핑")
 
-# 2. 🔐 [핵심 수정] AI 모델 자동 탐색 로직 (404 에러 방지)
-@st.cache_resource
-def get_working_model():
-    try:
-        genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-        # 현재 사용 가능한 모델 목록을 직접 확인합니다.
-        models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-        
-        # 1순위: 가장 빠르고 최신인 flash 모델
-        for m in models:
-            if 'gemini-1.5-flash' in m: return genai.GenerativeModel(m)
-        # 2순위: 그 외 사용 가능한 첫 번째 모델
-        if models: return genai.GenerativeModel(models[0])
-        return None
-    except Exception as e:
-        st.error(f"모델을 찾는 중 오류 발생: {e}")
-        return None
+# 2. 🔐 [3중 안전장치] AI 모델 설정
+def generate_with_fallback(prompt):
+    # 사용할 모델 후보들
+    model_names = ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-pro']
+    
+    for name in model_names:
+        try:
+            genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+            model = genai.GenerativeModel(name)
+            response = model.generate_content(prompt)
+            return response.text
+        except Exception as e:
+            # 429(바쁨) 에러가 나면 다음 모델로 넘어갑니다.
+            if "429" in str(e):
+                continue
+            else:
+                raise e
+    return None
 
-model = get_working_model()
-if not model:
-    st.error("🚨 사용할 수 있는 AI 모델을 찾지 못했습니다. API 키를 확인해주세요.")
-    st.stop()
-
-# 3. 메뉴 구성
+# 3. 메뉴 및 버튼
 categories = ["오늘의 주요 뉴스", "정치", "경제", "사회"]
 my_stocks = ["SGC에너지", "리플", "미국 증시", "비트코인"]
 
@@ -70,7 +66,7 @@ async def generate_speech(text, mode):
 
 # 4. 실행 로직
 if user_input:
-    with st.spinner(f"'{user_input}' 정보를 심층 분석 중입니다..."):
+    with st.spinner(f"'{user_input}' 정보를 분석 중입니다..."):
         try:
             # 뉴스 가져오기
             q = user_input if user_input != "오늘의 주요 뉴스" else "대한민국 주요 뉴스 속보 when:1d"
@@ -80,31 +76,28 @@ if user_input:
             
             if items:
                 all_titles = "\n".join([f"- {i.title.text}" for i in items])
-                
-                # 프롬프트 설정
                 role = "자상한 이모" if "초등" in level_mode else ("선생님" if "중등" in level_mode else "여성 아나운서")
-                prompt = f"너는 {role}야. 키워드 '{user_input}'에 대한 뉴스들을 읽고 3가지 핵심 내용을 풍성하게 요약해줘."
+                prompt = f"너는 {role}야. 키워드 '{user_input}' 뉴스들을 읽고 3가지 핵심을 풍성하게 요약해줘.\n\n{all_titles}"
                 
-                # AI 요약 실행
-                result = model.generate_content(prompt)
-                summary = result.text
+                # [핵심] 여러 모델 중 가능한 것을 찾아 요약
+                summary = generate_with_fallback(prompt)
                 
-                st.success(f"✅ {level_mode} 맞춤 요약 완료")
-                st.markdown(summary)
-                
-                st.write("---")
-                if st.button("🎧 음성 브리핑 듣기 (사람 같은 목소리)"):
-                    with st.spinner("목소리를 입히는 중..."):
-                        audio_bytes = asyncio.run(generate_speech(summary, level_mode))
-                        st.audio(audio_bytes, format='audio/mp3')
+                if summary:
+                    st.success(f"✅ {level_mode} 맞춤 요약 완료")
+                    st.markdown(summary)
+                    
+                    st.write("---")
+                    if st.button("🎧 음성 브리핑 듣기"):
+                        with st.spinner("목소리를 입히는 중..."):
+                            audio_bytes = asyncio.run(generate_speech(summary, level_mode))
+                            st.audio(audio_bytes, format='audio/mp3')
 
-                with st.expander("🔗 참고한 뉴스 원본 보기"):
-                    for i in items:
-                        st.markdown(f"- [{i.title.text}]({i.link.text})")
+                    with st.expander("🔗 참고한 뉴스 원본 보기"):
+                        for i in items:
+                            st.markdown(f"- [{i.title.text}]({i.link.text})")
+                else:
+                    st.error("🚨 모든 AI 모델이 현재 바쁩니다. 잠시 후 다시 시도해 주세요.")
             else:
-                st.warning("뉴스를 찾을 수 없습니다. 키워드를 바꿔보세요!")
+                st.warning("뉴스를 찾을 수 없습니다.")
         except Exception as e:
-            if "429" in str(e):
-                st.error("🚨 구글 AI가 너무 바쁘대요! 1분만 기다렸다가 다시 눌러주세요.")
-            else:
-                st.error(f"오류가 발생했습니다: {e}")
+            st.error(f"오류가 발생했습니다: {e}")
