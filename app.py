@@ -2,10 +2,8 @@ import streamlit as st
 import requests
 from bs4 import BeautifulSoup
 import google.generativeai as genai
-from datetime import datetime
 import edge_tts
 import asyncio
-import io
 
 # 1. 앱 설정
 st.set_page_config(page_title="나만의 스마트 뉴스 비서", page_icon="🗞️", layout="wide")
@@ -13,47 +11,26 @@ st.set_page_config(page_title="나만의 스마트 뉴스 비서", page_icon="�
 with st.sidebar:
     st.header("⚙️ 맞춤 설정")
     level_mode = st.radio("요약 눈높이", ("초등학생용 🎒", "중학생용 📝", "전문가용 💼"), index=2)
-    st.info("💡 속도를 위해 음성은 버튼을 누를 때만 생성됩니다.")
+    st.info("💡 1시간 동안 같은 뉴스는 AI가 기억해서 즉시 보여줍니다! (에러 방지)")
 
 st.title("🗞️ AI 맞춤 뉴스 브리핑")
 
-# 2. 🔐 [핵심 수정] 사용할 수 있는 모델 이름을 직접 찾아내기 (404 방지)
+# 2. AI 모델 설정
 @st.cache_resource
 def get_working_model():
     try:
         genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-        # 현재 이 API 키로 쓸 수 있는 모든 모델 목록을 가져옵니다.
         available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-        
-        # 1순위: 가장 빠르고 최신인 flash 모델 찾기
-        target_model = None
-        for name in available_models:
-            if 'gemini-1.5-flash' in name:
-                target_model = name
-                break
-        
-        # 2순위: flash가 없으면 pro 모델 찾기
+        target_model = next((m for m in available_models if 'gemini-1.5-flash' in m), None)
         if not target_model:
-            for name in available_models:
-                if 'gemini-pro' in name or 'gemini-1.5-pro' in name:
-                    target_model = name
-                    break
-        
-        # 3순위: 그것도 없으면 사용 가능한 아무 모델이나 선택
-        if not target_model and available_models:
-            target_model = available_models[0]
-            
-        if target_model:
-            return genai.GenerativeModel(target_model)
-        return None
-    except Exception as e:
-        st.error(f"AI 모델 목록을 가져오는 중 오류: {e}")
+            target_model = next((m for m in available_models if 'gemini-pro' in m), available_models[0] if available_models else None)
+        return genai.GenerativeModel(target_model) if target_model else None
+    except Exception:
         return None
 
-# AI 두뇌 준비
 model = get_working_model()
 
-# 3. 메뉴 및 버튼 구성
+# 3. 메뉴 구성
 categories = ["오늘의 주요 뉴스", "정치", "경제", "사회"]
 my_stocks = ["SGC에너지", "리플", "미국 증시", "비트코인"]
 
@@ -81,26 +58,36 @@ async def generate_speech(text, mode):
         if chunk["type"] == "audio": audio_data += chunk["data"]
     return audio_data
 
+# --- 🧠 [핵심 근본 해결책] 기억력(캐시) 함수 ---
+# 한 번 요약한 내용은 1시간(3600초) 동안 기억해두고, 구글에 다시 묻지 않습니다!
+@st.cache_data(ttl=3600, show_spinner=False)
+def fetch_and_summarize(query, mode):
+    q = query if query != "오늘의 주요 뉴스" else "대한민국 주요 뉴스 속보 when:1d"
+    url = f"https://news.google.com/rss/search?q={q}&hl=ko&gl=KR&ceid=KR:ko"
+    res = requests.get(url)
+    items = BeautifulSoup(res.content, features="xml").find_all('item')[:10]
+    
+    if not items: return None, []
+    
+    all_titles = "\n".join([f"- {i.title.text}" for i in items])
+    role = "자상한 이모" if "초등" in mode else ("선생님" if "중등" in mode else "여성 아나운서")
+    prompt = f"너는 {role}야. 뉴스들을 읽고 3가지 핵심 내용을 풍성하게 요약해줘.\n\n{all_titles}"
+    
+    result = model.generate_content(prompt)
+    
+    # 요약된 텍스트와 원본 뉴스 데이터를 반환 (기억시킴)
+    news_list = [{"title": i.title.text, "link": i.link.text} for i in items]
+    return result.text, news_list
+
 # 4. 실행 로직
 if user_input and model:
-    with st.spinner(f"'{user_input}' 정보를 심층 분석 중입니다..."):
+    with st.spinner(f"'{user_input}' 정보를 가져오고 있습니다..."):
         try:
-            # 뉴스 가져오기
-            q = user_input if user_input != "오늘의 주요 뉴스" else "대한민국 주요 뉴스 속보 when:1d"
-            url = f"https://news.google.com/rss/search?q={q}&hl=ko&gl=KR&ceid=KR:ko"
-            res = requests.get(url)
-            items = BeautifulSoup(res.content, features="xml").find_all('item')[:10]
+            # 기억된 결과가 있으면 즉시 꺼내오고, 없으면 구글에 물어봅니다.
+            summary, news_data = fetch_and_summarize(user_input, level_mode)
             
-            if items:
-                all_titles = "\n".join([f"- {i.title.text}" for i in items])
-                role = "자상한 이모" if "초등" in level_mode else ("선생님" if "중등" in level_mode else "여성 아나운서")
-                prompt = f"너는 {role}야. 뉴스들을 읽고 3가지 핵심 내용을 풍성하게 요약해줘.\n\n{all_titles}"
-                
-                # AI 요약 실행
-                result = model.generate_content(prompt)
-                summary = result.text
-                
-                st.success(f"✅ {level_mode} 맞춤 요약 완료")
+            if summary:
+                st.success(f"✅ {level_mode} 맞춤 요약 (1시간 내 재검색 시 즉시 표시됩니다)")
                 st.markdown(summary)
                 
                 st.write("---")
@@ -110,14 +97,11 @@ if user_input and model:
                         st.audio(audio_bytes, format='audio/mp3')
 
                 with st.expander("🔗 원본 뉴스 링크"):
-                    for i in items:
-                        st.markdown(f"- [{i.title.text}]({i.link.text})")
+                    for n in news_data:
+                        st.markdown(f"- [{n['title']}]({n['link']})")
             else:
                 st.warning("뉴스를 찾을 수 없습니다.")
         except Exception as e:
-            if "429" in str(e):
-                st.error("🚨 구글 AI가 너무 바쁘대요! 1분만 기다렸다가 다시 눌러주세요.")
-            else:
-                st.error(f"오류가 발생했습니다: {e}")
+            st.error("🚨 구글 AI가 사용 한도를 초과했거나 바쁩니다. 잠시 후 다시 시도해주세요.")
 elif not model:
-    st.error("🚨 사용할 수 있는 AI 모델이 없습니다. API 키를 다시 확인해주세요.")
+    st.error("🚨 사용할 수 있는 AI 모델이 없습니다.")
