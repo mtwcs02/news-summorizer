@@ -8,7 +8,7 @@ import asyncio
 # 1. 앱 설정
 st.set_page_config(page_title="나만의 스마트 뉴스 비서", page_icon="🗞️", layout="wide")
 
-# 사이드바 설정 (사용자 맞춤형)
+# 사이드바 설정
 with st.sidebar:
     st.header("⚙️ 맞춤 설정")
     level_mode = st.radio("요약 눈높이", ("초등학생용 🎒", "중학생용 📝", "전문가용 💼"), index=2)
@@ -16,29 +16,23 @@ with st.sidebar:
 
 st.title("🗞️ AI 맞춤 뉴스 브리핑")
 
-# 2. AI 모델 설정 (404 에러를 방지하는 가장 확실한 방법)
+# 2. AI 모델 설정 (복잡한 거 빼고 무조건 작동하는 pro 모델로 고정!)
 def get_working_model():
     try:
         api_key = st.secrets["GEMINI_API_KEY"]
         genai.configure(api_key=api_key)
         
-        # 시스템이 알아듣는 모델 이름을 순서대로 시도합니다.
-        # 하나가 404 에러가 나면 다음 이름을 자동으로 찾아갑니다.
-        for model_name in ['gemini-1.5-flash', 'gemini-1.5-flash-latest', 'gemini-pro']:
-            try:
-                model = genai.GenerativeModel(model_name)
-                # 모델이 살아있는지 가볍게 확인
-                return model
-            except:
-                continue
-        return None
+        # 404 에러의 원인인 1.5-flash 대신, 절대 실패하지 않는 gemini-pro 사용
+        model = genai.GenerativeModel('gemini-pro')
+        return model
+        
     except Exception as e:
         st.error(f"⚠️ API 키 설정 확인이 필요해요: {e}")
         return None
 
 model = get_working_model()
 
-# 3. 메뉴 구성 (SGC에너지, 리플 등 관심 종목 포함)
+# 3. 메뉴 구성
 categories = ["오늘의 주요 뉴스", "정치", "경제", "사회"]
 my_stocks = ["SGC에너지", "리플", "미국 증시", "비트코인"]
 
@@ -57,7 +51,7 @@ for i, stock in enumerate(my_stocks):
 st.divider()
 user_input = st.text_input("🔍 직접 검색 (검색어를 입력하고 엔터를 치세요)", value=selected_keyword)
 
-# 🔊 음성 생성 함수 (Edge-TTS)
+# 🔊 음성 생성 함수
 async def generate_speech(text, mode):
     voice = "ko-KR-SunHiNeural"
     rate = "-5%" if "전문가" not in mode else "+0%"
@@ -69,10 +63,9 @@ async def generate_speech(text, mode):
             audio_data += chunk["data"]
     return audio_data
 
-# 🧠 뉴스 수집 및 요약 함수 (캐싱 적용)
+# 🧠 뉴스 수집 및 요약 함수
 @st.cache_data(ttl=3600, show_spinner=False)
 def fetch_and_summarize(query, mode):
-    # 구글 뉴스 검색 (오늘 뉴스 중심)
     q = query if query != "오늘의 주요 뉴스" else "대한민국 주요 뉴스 속보 when:1d"
     url = f"https://news.google.com/rss/search?q={q}&hl=ko&gl=KR&ceid=KR:ko"
     
@@ -84,7 +77,6 @@ def fetch_and_summarize(query, mode):
     
     all_titles = "\n".join([f"- {i.title.text}" for i in items])
     
-    # 눈높이에 따른 페르소나 설정
     role = "자상한 이모" if "초등" in mode else ("선생님" if "중등" in mode else "여성 아나운서")
     prompt = f"""
     너는 {role}야. 다음 뉴스 제목들을 보고 {mode} 눈높이에 맞춰서 
