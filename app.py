@@ -16,22 +16,26 @@ with st.sidebar:
 
 st.title("🗞️ AI 맞춤 뉴스 브리핑")
 
-# 2. AI 모델 설정 (한도 걱정 없는 1.5-flash로 고정)
+# 2. AI 모델 설정 (404 에러 방지용 최신 설정)
 def get_working_model():
     try:
-        # Streamlit Secrets에서 API 키 가져오기
         api_key = st.secrets["GEMINI_API_KEY"]
         genai.configure(api_key=api_key)
         
-        # [수정] 복잡한 검색 대신, 가장 안정적이고 한도 넉넉한 모델로 직접 지정합니다.
-        return genai.GenerativeModel('gemini-1.5-flash')
+        # 404 에러가 날 경우를 대비해 가장 안정적인 이름을 사용합니다.
+        # 만약 1.5-flash가 안되면 자동으로 gemini-pro를 쓰도록 안전장치를 걸었습니다.
+        try:
+            return genai.GenerativeModel('gemini-1.5-flash')
+        except:
+            return genai.GenerativeModel('gemini-pro')
+            
     except Exception as e:
-        st.error(f"API 설정 중 오류 발생: {e}")
+        st.error(f"API 설정 확인 필요: {e}")
         return None
 
 model = get_working_model()
 
-# 3. 메뉴 구성 (SGC에너지, 리플 등 관심 종목 유지)
+# 3. 메뉴 구성 (관심 종목 반영)
 categories = ["오늘의 주요 뉴스", "정치", "경제", "사회"]
 my_stocks = ["SGC에너지", "리플", "미국 증시", "비트코인"]
 
@@ -50,7 +54,7 @@ for i, stock in enumerate(my_stocks):
 st.divider()
 user_input = st.text_input("🔍 직접 검색", value=selected_keyword)
 
-# 🔊 음성 생성 함수 (Edge-TTS)
+# 🔊 음성 생성 함수
 async def generate_speech(text, mode):
     voice = "ko-KR-SunHiNeural"
     rate = "-5%" if "전문가" not in mode else "+0%"
@@ -62,10 +66,9 @@ async def generate_speech(text, mode):
             audio_data += chunk["data"]
     return audio_data
 
-# 🧠 [기억력 향상] 뉴스 가져오기 및 요약 함수
+# 🧠 뉴스 가져오기 및 요약 함수 (캐싱 적용)
 @st.cache_data(ttl=3600, show_spinner=False)
 def fetch_and_summarize(query, mode):
-    # 구글 뉴스 RSS 활용
     q = query if query != "오늘의 주요 뉴스" else "대한민국 주요 뉴스 속보 when:1d"
     url = f"https://news.google.com/rss/search?q={q}&hl=ko&gl=KR&ceid=KR:ko"
     
@@ -76,21 +79,16 @@ def fetch_and_summarize(query, mode):
         return None, []
     
     all_titles = "\n".join([f"- {i.title.text}" for i in items])
-    
-    # 눈높이에 따른 페르소나 설정
     role = "자상한 이모" if "초등" in mode else ("선생님" if "중등" in mode else "여성 아나운서")
+    
     prompt = f"""
-    너는 {role}야. 아래 제공된 뉴스 제목들을 읽고, {mode}에 맞춰서 
-    오늘의 핵심 내용을 3가지 포인트로 풍성하고 친절하게 요약해줘.
+    너는 {role}야. 다음 뉴스 제목들을 보고 {mode}에 맞춰 3가지 핵심을 아주 친절하고 풍성하게 요약해줘.
     
     뉴스 리스트:
     {all_titles}
     """
     
-    # AI 요약 실행
     response = model.generate_content(prompt)
-    
-    # 나중에 링크를 보여주기 위해 뉴스 데이터 정리
     news_list = [{"title": i.title.text, "link": i.link.text} for i in items]
     return response.text, news_list
 
@@ -105,13 +103,11 @@ if user_input and model:
                 st.markdown(summary)
                 
                 st.write("---")
-                # 음성 브리핑 버튼
                 if st.button("🎧 음성 브리핑 듣기"):
-                    with st.spinner("목소리를 입히는 중..."):
+                    with st.spinner("목소리를 생성하는 중..."):
                         audio_bytes = asyncio.run(generate_speech(summary, level_mode))
                         st.audio(audio_bytes, format='audio/mp3')
 
-                # 원본 링크 펼치기
                 with st.expander("🔗 참고한 뉴스 원본 보기"):
                     for n in news_data:
                         st.markdown(f"- [{n['title']}]({n['link']})")
@@ -119,10 +115,7 @@ if user_input and model:
                 st.warning("관련 뉴스를 찾을 수 없습니다.")
                 
         except Exception as e:
-            if "429" in str(e):
-                st.error("🚨 한도를 초과했습니다. 모델을 'gemini-1.5-flash'로 썼는데도 이 메시지가 나온다면 잠시만 기다려주세요.")
-            else:
-                st.error(f"오류가 발생했습니다: {e}")
+            st.error(f"오류가 발생했습니다: {e}")
 
 elif not model:
-    st.error("🚨 AI 모델을 불러오지 못했습니다. Secrets의 API 키를 확인해주세요.")
+    st.error("🚨 API 키가 없거나 모델 설정에 실패했습니다. Secrets 설정을 확인해주세요.")
