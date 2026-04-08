@@ -68,6 +68,7 @@ async def generate_high_quality_speech(text):
     return audio_bytes
 
 # 🧠 뉴스 수집 및 요약 함수
+# 🧠 뉴스 수집 및 요약 함수
 @st.cache_data(ttl=3600, show_spinner=False)
 def fetch_and_summarize(query, mode):
     q = query if query != "오늘의 주요 뉴스" else "대한민국 주요 뉴스 속보 when:1d"
@@ -81,11 +82,17 @@ def fetch_and_summarize(query, mode):
     
     all_titles = "\n".join([f"- {i.title.text}" for i in items])
     
-    # 👩‍👧 "이모" 삭제하고 "엄마"로 완벽 교체!
-    role = "다정한 엄마" if "초등" in mode else ("친절한 선생님" if "중등" in mode else "여성 아나운서")
+    # 👩‍👧 눈높이에 맞춘 '디테일한 페르소나(역할)' 부여
+    if "초등" in mode:
+        role_instruction = "너는 10대 초등학생 자녀에게 뉴스를 설명해주는 다정한 엄마야. 단, '아가들아' 같은 유아용 단어나 지나치게 유치한 표현은 절대 쓰지 마. '우리 아들/딸, 오늘 이런 뉴스가 있었네~' 처럼 친근하고 조곤조곤하게 설명해 줘."
+    elif "중등" in mode:
+        role_instruction = "너는 중학생에게 시사 상식을 가르쳐주는 친절하고 지적인 엄마야. 너무 유치하지 않게, 부드러운 존댓말로 논리적으로 설명해 줘."
+    else:
+        role_instruction = "너는 9시 뉴스를 진행하는 전문적이고 신뢰감 있는 여성 아나운서야. 명확하고 깔끔한 아나운서 톤으로 객관적으로 브리핑해 줘."
+
     prompt = f"""
-    너는 {role}야. 다음 뉴스 제목들을 보고 {mode} 눈높이에 맞춰서 
-    오늘의 핵심 내용을 3가지 포인트로 풍성하고 친절하게 요약해줘.
+    {role_instruction}
+    다음 뉴스 제목들을 보고 핵심 내용을 3가지 포인트로 요약해줘.
     
     뉴스 리스트:
     {all_titles}
