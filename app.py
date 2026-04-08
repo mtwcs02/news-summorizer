@@ -2,8 +2,8 @@ import streamlit as st
 import requests
 from bs4 import BeautifulSoup
 import google.generativeai as genai
-import edge_tts
-import asyncio
+from gtts import gTTS
+import io
 
 # 1. 앱 설정
 st.set_page_config(page_title="나만의 스마트 뉴스 비서", page_icon="🗞️", layout="wide")
@@ -16,11 +16,10 @@ with st.sidebar:
 
 st.title("🗞️ AI 맞춤 뉴스 브리핑")
 
-# 2. AI 모델 설정 (사진에서 찾은 진짜 최신 모델 이름 적용!)
+# 2. AI 모델 설정 (하루 한도가 넉넉한 Lite 모델 유지!)
 try:
     api_key = st.secrets["GEMINI_API_KEY"]
     genai.configure(api_key=api_key)
-    # 드디어 찾은 진짜 이름!
     model = genai.GenerativeModel('gemini-2.5-flash-lite')
 except Exception as e:
     st.error(f"⚠️ API 키 설정 오류: {e}")
@@ -45,17 +44,13 @@ for i, stock in enumerate(my_stocks):
 st.divider()
 user_input = st.text_input("🔍 직접 검색 (검색어를 입력하고 엔터를 치세요)", value=selected_keyword)
 
-# 🔊 음성 생성 함수
-async def generate_speech(text, mode):
-    voice = "ko-KR-SunHiNeural"
-    rate = "-5%" if "전문가" not in mode else "+0%"
-    pitch = "+2Hz" if "전문가" not in mode else "+0Hz"
-    communicate = edge_tts.Communicate(text, voice, rate=rate, pitch=pitch)
-    audio_data = b""
-    async for chunk in communicate.stream():
-        if chunk["type"] == "audio": 
-            audio_data += chunk["data"]
-    return audio_data
+# 🔊 음성 생성 함수 (안정적인 gTTS 방식으로 변경)
+def generate_speech(text):
+    # 구글 기본 음성을 사용하여 서버 충돌 방지
+    tts = gTTS(text=text, lang='ko', slow=False)
+    fp = io.BytesIO()
+    tts.write_to_fp(fp)
+    return fp.getvalue()
 
 # 🧠 뉴스 수집 및 요약 함수
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -96,8 +91,8 @@ if user_input and model:
                 
                 st.write("---")
                 if st.button("🎧 음성 브리핑 듣기"):
-                    with st.spinner("목소리를 입히는 중..."):
-                        audio_bytes = asyncio.run(generate_speech(summary, level_mode))
+                    with st.spinner("목소리를 준비하는 중입니다..."):
+                        audio_bytes = generate_speech(summary)
                         st.audio(audio_bytes, format='audio/mp3')
 
                 with st.expander("🔗 참고한 뉴스 원본 링크"):
