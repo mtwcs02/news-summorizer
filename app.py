@@ -3,7 +3,8 @@ import requests
 from bs4 import BeautifulSoup
 import google.generativeai as genai
 from gtts import gTTS
-import io
+import os
+import tempfile
 
 # 1. 앱 설정
 st.set_page_config(page_title="나만의 스마트 뉴스 비서", page_icon="🗞️", layout="wide")
@@ -16,7 +17,7 @@ with st.sidebar:
 
 st.title("🗞️ AI 맞춤 뉴스 브리핑")
 
-# 2. AI 모델 설정 (하루 한도가 넉넉한 Lite 모델 유지!)
+# 2. AI 모델 설정
 try:
     api_key = st.secrets["GEMINI_API_KEY"]
     genai.configure(api_key=api_key)
@@ -25,32 +26,45 @@ except Exception as e:
     st.error(f"⚠️ API 키 설정 오류: {e}")
     model = None
 
+# ======= 🧠 핵심 해결: 스트림릿 기억상실증 방지 (메모리) =======
+if 'search_query' not in st.session_state:
+    st.session_state.search_query = ""
+
+# 빠른 선택 버튼을 누르면 메모리에 검색어를 저장하는 함수
+def update_query(new_query):
+    st.session_state.search_query = new_query
+
 # 3. 메뉴 구성
 categories = ["오늘의 주요 뉴스", "정치", "경제", "사회"]
 my_stocks = ["SGC에너지", "리플", "미국 증시", "비트코인"]
 
 st.markdown("### 📍 빠른 선택")
 cols = st.columns(4)
-selected_keyword = ""
 for i, cat in enumerate(categories):
-    if cols[i].button(cat, key=f"cat_{i}", use_container_width=True): 
-        selected_keyword = cat
+    # 버튼을 누르면 update_query 함수가 작동해서 단어를 기억함
+    cols[i].button(cat, key=f"cat_{i}", on_click=update_query, args=(cat,), use_container_width=True)
 
 cols2 = st.columns(4)
 for i, stock in enumerate(my_stocks):
-    if cols2[i].button(stock, key=f"stock_{i}", use_container_width=True): 
-        selected_keyword = stock
+    cols2[i].button(stock, key=f"stock_{i}", on_click=update_query, args=(stock,), use_container_width=True)
 
 st.divider()
-user_input = st.text_input("🔍 직접 검색 (검색어를 입력하고 엔터를 치세요)", value=selected_keyword)
 
-# 🔊 음성 생성 함수 (안정적인 gTTS 방식으로 변경)
+# 텍스트 박스에 key="search_query"를 달아서 메모리와 찰떡같이 연결!
+user_input = st.text_input("🔍 직접 검색 (검색어를 입력하고 엔터를 치세요)", key="search_query")
+
+# 🔊 음성 생성 함수 (파일 저장 방식으로 매우 안정적)
 def generate_speech(text):
-    # 구글 기본 음성을 사용하여 서버 충돌 방지
     tts = gTTS(text=text, lang='ko', slow=False)
-    fp = io.BytesIO()
-    tts.write_to_fp(fp)
-    return fp.getvalue()
+    with tempfile.NamedTemporaryFile(delete=False, suffix='.mp3') as fp:
+        temp_filename = fp.name
+        tts.save(temp_filename)
+        
+    with open(temp_filename, 'rb') as f:
+        audio_bytes = f.read()
+        
+    os.unlink(temp_filename) 
+    return audio_bytes
 
 # 🧠 뉴스 수집 및 요약 함수
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -93,7 +107,8 @@ if user_input and model:
                 if st.button("🎧 음성 브리핑 듣기"):
                     with st.spinner("목소리를 준비하는 중입니다..."):
                         audio_bytes = generate_speech(summary)
-                        st.audio(audio_bytes, format='audio/mp3')
+                        # autoplay=True 를 넣어서 버튼 누르면 알아서 재생됨!
+                        st.audio(audio_bytes, format='audio/mp3', autoplay=True)
 
                 with st.expander("🔗 참고한 뉴스 원본 링크"):
                     for n in news_data:
