@@ -2,7 +2,8 @@ import streamlit as st
 import requests
 from bs4 import BeautifulSoup
 import google.generativeai as genai
-from gtts import gTTS
+import edge_tts
+import asyncio
 import os
 import tempfile
 
@@ -15,9 +16,9 @@ with st.sidebar:
     level_mode = st.radio("요약 눈높이", ("초등학생용 🎒", "중학생용 📝", "전문가용 💼"), index=2)
     st.info("💡 실시간 뉴스 요약! (엄마뉴스)")
 
-st.title("🗞️ AI 맞춤 뉴스 브리핑")
+st.title("🗞️ 엄마가 읽어주는 뉴스 브리핑")
 
-# 2. AI 모델 설정
+# 2. AI 모델 설정 (한도 넉넉한 Lite 모델)
 try:
     api_key = st.secrets["GEMINI_API_KEY"]
     genai.configure(api_key=api_key)
@@ -26,11 +27,10 @@ except Exception as e:
     st.error(f"⚠️ API 키 설정 오류: {e}")
     model = None
 
-# ======= 🧠 핵심 해결: 스트림릿 기억상실증 방지 (메모리) =======
+# ======= 🧠 스트림릿 기억상실증 방지 (메모리) =======
 if 'search_query' not in st.session_state:
     st.session_state.search_query = ""
 
-# 빠른 선택 버튼을 누르면 메모리에 검색어를 저장하는 함수
 def update_query(new_query):
     st.session_state.search_query = new_query
 
@@ -41,7 +41,6 @@ my_stocks = ["SGC에너지", "리플", "미국 증시", "비트코인"]
 st.markdown("### 📍 빠른 선택")
 cols = st.columns(4)
 for i, cat in enumerate(categories):
-    # 버튼을 누르면 update_query 함수가 작동해서 단어를 기억함
     cols[i].button(cat, key=f"cat_{i}", on_click=update_query, args=(cat,), use_container_width=True)
 
 cols2 = st.columns(4)
@@ -50,16 +49,18 @@ for i, stock in enumerate(my_stocks):
 
 st.divider()
 
-# 텍스트 박스에 key="search_query"를 달아서 메모리와 찰떡같이 연결!
 user_input = st.text_input("🔍 직접 검색 (검색어를 입력하고 엔터를 치세요)", key="search_query")
 
-# 🔊 음성 생성 함수 (파일 저장 방식으로 매우 안정적)
-def generate_speech(text):
-    tts = gTTS(text=text, lang='ko', slow=False)
+# ======= 🎙️ 고음질 여성 음성 (SunHi - 가장 자연스러운 한국어 여성 목소리) =======
+async def generate_high_quality_speech(text):
+    voice = "ko-KR-SunHiNeural" # 확실한 여성 목소리 고정!
+    communicate = edge_tts.Communicate(text, voice)
+    
     with tempfile.NamedTemporaryFile(delete=False, suffix='.mp3') as fp:
         temp_filename = fp.name
-        tts.save(temp_filename)
         
+    await communicate.save(temp_filename)
+    
     with open(temp_filename, 'rb') as f:
         audio_bytes = f.read()
         
@@ -80,7 +81,8 @@ def fetch_and_summarize(query, mode):
     
     all_titles = "\n".join([f"- {i.title.text}" for i in items])
     
-    role = "자상한 이모" if "초등" in mode else ("선생님" if "중등" in mode else "여성 아나운서")
+    # 👩‍👧 "이모" 삭제하고 "엄마"로 완벽 교체!
+    role = "다정한 엄마" if "초등" in mode else ("친절한 선생님" if "중등" in mode else "여성 아나운서")
     prompt = f"""
     너는 {role}야. 다음 뉴스 제목들을 보고 {mode} 눈높이에 맞춰서 
     오늘의 핵심 내용을 3가지 포인트로 풍성하고 친절하게 요약해줘.
@@ -104,10 +106,9 @@ if user_input and model:
                 st.markdown(summary)
                 
                 st.write("---")
-                if st.button("🎧 음성 브리핑 듣기"):
-                    with st.spinner("목소리를 준비하는 중입니다..."):
-                        audio_bytes = generate_speech(summary)
-                        # autoplay=True 를 넣어서 버튼 누르면 알아서 재생됨!
+                if st.button("🎧 고음질 음성 듣기"):
+                    with st.spinner("뉴스를 읽어줄 준비 중입니다..."):
+                        audio_bytes = asyncio.run(generate_high_quality_speech(summary))
                         st.audio(audio_bytes, format='audio/mp3', autoplay=True)
 
                 with st.expander("🔗 참고한 뉴스 원본 링크"):
