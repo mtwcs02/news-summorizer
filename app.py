@@ -67,10 +67,9 @@ async def generate_high_quality_speech(text):
     os.unlink(temp_filename) 
     return audio_bytes
 
-# 🧠 뉴스 수집 및 요약 함수 (강력한 엄마 모드 버전)
-@st.cache_data(ttl=60, show_spinner=False) # 테스트를 위해 기억 시간을 1분으로 확 줄였습니다!
+# 🧠 뉴스 수집 및 요약 함수 (들여쓰기 완벽 수정 버전)
+@st.cache_data(ttl=60, show_spinner=False)
 def fetch_and_summarize(query, mode):
-    # 구글 뉴스 검색
     q = query if query != "오늘의 주요 뉴스" else "대한민국 주요 뉴스 속보 when:1d"
     url = f"https://news.google.com/rss/search?q={q}&hl=ko&gl=KR&ceid=KR:ko"
     
@@ -82,19 +81,8 @@ def fetch_and_summarize(query, mode):
     
     all_titles = "\n".join([f"- {i.title.text}" for i in items])
     
-    # 👩‍👧 [핵심] 말투 지시사항을 더 독하게 수정
-    if "초등" in mode:
-        persona = "초등학생 자녀를 둔 다정한 엄마. 유치하지 않게 친구처럼 조곤조곤함."
-        style = "안녕~ 우리 딸/아들! 오늘 이런 뉴스가 있네? / 그랬대요~ / 했단다."
-    elif "중등" in mode:
-        persona = "중학생 자녀와 대화하는 지적이고 다정한 엄마. 절대 아나운서 아님!"
-        style = "오늘 이런 소식이 있더라~ / 이건 이런 뜻이야 / 했대요 / 인 것 같아."
-    else:
-        persona = "9시 뉴스 전문 여성 아나운서"
-        style = "안녕하십니까 / 입니다 / 하시기 바랍니다."
-
-    # 프롬프트를 AI가 거부할 수 없게 구조화
- prompt = f"""
+    # 👩‍👧 [최종] AI의 아나운서 영혼을 뿌리 뽑는 강력한 프롬프트
+    prompt = f"""
     [너의 역할: 절대 잊지 마!]
     너는 뉴스 앵커가 아니라, 중학생 자녀에게 다정하게 말을 건네는 '엄마'야.
     방송 멘트나 딱딱한 요약 보고서 같은 말투는 절대 쓰면 안 돼.
@@ -113,7 +101,6 @@ def fetch_and_summarize(query, mode):
     {all_titles}
     """
     
-    # 💡 팁: 동일 검색어 캐시 충돌을 피하기 위해 내부적으로 살짝 변화를 줌
     response = model.generate_content(prompt)
     news_list = [{"title": i.title.text, "link": i.link.text} for i in items]
     return response.text, news_list
