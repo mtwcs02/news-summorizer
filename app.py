@@ -100,7 +100,7 @@ def fetch_and_summarize(query, mode):
         all_titles = "\n".join([f"- {t}" for t in titles])
 
         # 모드 설정
-       if "초등" in mode:
+        if "초등" in mode:
             role_name = "다정한 엄마"
             content_rule = """
             - 뉴스 딱 2개만 선정. 
@@ -111,7 +111,7 @@ def fetch_and_summarize(query, mode):
             start_msg = "엄마가 오늘 뉴스 들려줄게."
             end_msg = "오늘 하루도 친구들과 사이좋게 지내며 즐겁게 보내자!"
 
-       elif "중학생" in mode:
+        elif "중학생" in mode:
             role_name = "사춘기 아들을 둔 지적인 엄마"
             content_rule = """
             - 핵심 뉴스 3개 선정. 
