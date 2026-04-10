@@ -72,8 +72,10 @@ async def generate_high_quality_speech(text):
 def run_async_tts(text):
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
-    audio_bytes = loop.run_until_complete(generate_high_quality_speech(text))
-    loop.close()
+    try:
+        audio_bytes = loop.run_until_complete(generate_high_quality_speech(text))
+    finally:
+        loop.close()  # 에러가 나더라도 루프를 안전하게 닫음
     return audio_bytes
 
 # 5. 뉴스 수집 및 요약 함수 (안정화)
@@ -98,24 +100,25 @@ def fetch_and_summarize(query, mode):
         all_titles = "\n".join([f"- {t}" for t in titles])
 
         # 모드 설정
-        if "초등" in mode:
+       if "초등" in mode:
             role_name = "다정한 엄마"
             content_rule = """
-            - 핵심 뉴스 2개
-            - 문장 짧게
-            - 비유 1개만 사용
-            - 설명 먼저, 용어 나중
+            - 뉴스 딱 2개만 선정. 
+            - [정치 정의]: "정치는 우리나라를 더 좋게 만들기 위해 어른들이 생각을 나누는 행복한 고민"으로 시작할 것.
+            - [설명 방식]: 비유를 먼저 하고 용어(묘수, 극단적 등)는 나중에 알려줄 것.
+            - [부드러운 표현]: '나라 망한다' 같은 공포심 대신 '시험 걱정하느라 다른 걸 못 보는 마음'으로 표현할 것.
             """
             start_msg = "엄마가 오늘 뉴스 들려줄게."
             end_msg = "오늘 하루도 친구들과 사이좋게 지내며 즐겁게 보내자!"
 
-        elif "중학생" in mode:
-            role_name = "지적인 엄마"
+       elif "중학생" in mode:
+            role_name = "사춘기 아들을 둔 지적인 엄마"
             content_rule = """
-            - 뉴스 3개
-            - 사실 -> 의미 -> 교훈 구조
-            - 어려운 용어 1줄 설명
-            - 엄마 말투 유지 (~란다, ~했대)
+            - 핵심 뉴스 3개 선정. 
+            - [말투]: 절대 앵커 말투 금지. 끝까지 '~란다', '~했대', '~인 것 같아' 같은 구어체를 유지할 것.
+            - [구성]: 사실 전달 -> 사회적 의미 -> 생각할 거리(교훈) 순서로 구성할 것.
+            - [지식]: 시사 용어(보증금, 안보 등)는 반드시 한 문장으로 친절하게 풀이할 것.
+            """
             """
             start_msg = "엄마가 오늘 뉴스 들려줄게."
             end_msg = "오늘 하루도 즐겁게 보내자!"
@@ -131,15 +134,15 @@ def fetch_and_summarize(query, mode):
             end_msg = "이상으로 뉴스를 마치겠습니다. 감사합니다."
 
         prompt = f"""
-        너의 역할은 [{role_name}]야.
-
-        [지시사항]
+        너의 역할은 지금부터 [{role_name}]야. 아래 지침을 완벽히 지켜줘.
+        
         {content_rule}
-        - 시작은 "{start_msg}"
-        - 끝은 "{end_msg}"
-        - 문장은 짧게
+        - 시작은 반드시 "{start_msg}"
+        - 마무리는 반드시 "{end_msg}"
+        - 번호(첫째, 둘째) 사용 금지. 문장을 자연스럽게 이어줘.
+        - 뉴스 사이사이에 자연스러운 '징검다리 문장'을 넣어서 흐름을 부드럽게 할 것.
 
-        [뉴스]
+        [뉴스 리스트]
         {all_titles}
         """
 
