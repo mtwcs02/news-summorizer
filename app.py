@@ -78,14 +78,15 @@ def run_async_tts(text):
         loop.close()  # 에러가 나더라도 루프를 안전하게 닫음
     return audio_bytes
 
-# 5. 뉴스 수집 및 요약 함수 (안정화)
+# 5. 뉴스 수집 및 요약 함수 (시작점 및 따옴표 완전 교정본)
 @st.cache_data(ttl=1800, show_spinner=False)
 def fetch_and_summarize(query, mode):
     try:
+        # --- [1단계: 뉴스 수집] ---
         q = query if query != "오늘의 주요 뉴스" else "대한민국 주요 뉴스 속보 when:1d"
-        q = f"{q} 대한민국 뉴스 when:1d"
+        search_q = f"{q} 대한민국 뉴스 when:1d"
 
-        url = f"https://news.google.com/rss/search?q={q}&hl=ko&gl=KR&ceid=KR:ko"
+        url = f"https://news.google.com/rss/search?q={search_q}&hl=ko&gl=KR&ceid=KR:ko"
         res = requests.get(url, timeout=5)
         res.raise_for_status()
 
@@ -95,18 +96,17 @@ def fetch_and_summarize(query, mode):
         if not items:
             return None, []
 
-        # 중복 제거
         titles = list(dict.fromkeys([i.title.text for i in items]))
         all_titles = "\n".join([f"- {t}" for t in titles])
 
-        # 모드 설정
+        # --- [2단계: 모드 설정 (여기 시작점을 주목하세요!)] ---
         if "초등" in mode:
             role_name = "다정한 엄마"
             content_rule = """
             - 뉴스 딱 2개만 선정. 
             - [정치 정의]: "정치는 우리나라를 더 좋게 만들기 위해 어른들이 생각을 나누는 행복한 고민"으로 시작할 것.
             - [설명 방식]: 비유를 먼저 하고 용어(묘수, 극단적 등)는 나중에 알려줄 것.
-            - [부드러운 표현]: '나라 망한다' 같은 공포심 대신 '시험 걱정하느라 다른 걸 못 보는 마음'으로 표현할 것.
+            - [부드러운 표현]: '나라 망한다' 대신 '시험 걱정하느라 다른 걸 못 보는 마음'으로 표현할 것.
             """
             start_msg = "엄마가 오늘 뉴스 들려줄게."
             end_msg = "오늘 하루도 친구들과 사이좋게 지내며 즐겁게 보내자!"
@@ -119,20 +119,20 @@ def fetch_and_summarize(query, mode):
             - [구성]: 사실 전달 -> 사회적 의미 -> 생각할 거리(교훈) 순서로 구성할 것.
             - [지식]: 시사 용어(보증금, 안보 등)는 반드시 한 문장으로 친절하게 풀이할 것.
             """
-            """
             start_msg = "엄마가 오늘 뉴스 들려줄게."
             end_msg = "오늘 하루도 즐겁게 보내자!"
 
         else:
             role_name = "전문 뉴스 아나운서"
             content_rule = """
-            - 뉴스 3개
-            - 객관적 요약
-            - 전문 용어 사용
+            - 뉴스 3개 선정.
+            - 객관적이고 정확한 정보 전달.
+            - 전문 용어와 수치를 활용한 신뢰감 있는 말투.
             """
             start_msg = "안녕하십니까. 뉴스 브리핑입니다."
             end_msg = "이상으로 뉴스를 마치겠습니다. 감사합니다."
 
+        # --- [3단계: AI에게 보내는 최종 명령] ---
         prompt = f"""
         너의 역할은 지금부터 [{role_name}]야. 아래 지침을 완벽히 지켜줘.
         
@@ -146,12 +146,8 @@ def fetch_and_summarize(query, mode):
         {all_titles}
         """
 
-        try:
-            response = model.generate_content(prompt)
-            summary = response.text
-        except Exception as e:
-            summary = f"요약 중 오류가 발생했어: {e}"
-
+        response = model.generate_content(prompt)
+        summary = response.text
         news_list = [{"title": i.title.text, "link": i.link.text} for i in items]
 
         return summary, news_list
