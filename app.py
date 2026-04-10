@@ -38,7 +38,7 @@ def update_query(new_query):
 
 # 3. 메뉴 구성
 categories = ["오늘의 주요 뉴스", "정치", "경제", "사회"]
-my_stocks = ["SGC에너지", "리플", "미국 증시", "비트코인"]
+my_stocks = ["미국 증시", "한국 증시", "비트코인", "리플"]
 
 st.markdown("### 📍 빠른 선택")
 
