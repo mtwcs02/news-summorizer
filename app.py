@@ -67,10 +67,10 @@ async def generate_high_quality_speech(text):
     os.unlink(temp_filename) 
     return audio_bytes
 
-# 🧠 뉴스 수집 및 요약 함수
-# 🧠 뉴스 수집 및 요약 함수
-@st.cache_data(ttl=3600, show_spinner=False)
+# 🧠 뉴스 수집 및 요약 함수 (강력한 엄마 모드 버전)
+@st.cache_data(ttl=60, show_spinner=False) # 테스트를 위해 기억 시간을 1분으로 확 줄였습니다!
 def fetch_and_summarize(query, mode):
+    # 구글 뉴스 검색
     q = query if query != "오늘의 주요 뉴스" else "대한민국 주요 뉴스 속보 when:1d"
     url = f"https://news.google.com/rss/search?q={q}&hl=ko&gl=KR&ceid=KR:ko"
     
@@ -82,30 +82,35 @@ def fetch_and_summarize(query, mode):
     
     all_titles = "\n".join([f"- {i.title.text}" for i in items])
     
-    # 👩‍👧 눈높이에 맞춘 '디테일한 페르소나(역할)' 부여
+    # 👩‍👧 [핵심] 말투 지시사항을 더 독하게 수정
     if "초등" in mode:
-        role_instruction = "너는 10대 초등학생 자녀에게 뉴스를 설명해주는 다정한 엄마야. 단, '아가들아' 같은 유아용 단어나 지나치게 유치한 표현은 절대 쓰지 마. '우리 아들/딸, 오늘 이런 뉴스가 있었네~' 처럼 친근하고 조곤조곤하게 설명해 줘."
-   elif "중등" in mode:
-        role_instruction = """너는 지금 뉴스 앵커가 절대 아니야! 식탁에서 중학생 아들, 딸과 수다 떠는 '다정한 엄마'야.
-        
-        [말투 규칙 - 어기면 절대 안 됨]
-        1. 첫 문장에서 '안녕하십니까', '뉴스입니다'라고 시작하면 절대 안 돼. 그냥 "우리 딸/아들, 오늘 이런 일이 있었대~"로 시작해줘.
-        2. 모든 문장은 '~해요', '~단다', '~란다', '~죠'로 끝나는 아주 부드러운 구어체(말하는 말투)만 사용해.
-        3. 전문 용어가 나오면 "이건 좀 어렵지? 이런 뜻이야~"라고 엄마가 설명해주듯 풀어서 말해줘.
-        4. 보고서처럼 '첫째, 둘째' 하지 말고, '우선 이건 이렇고~ 그다음에 이런 일도 있대'처럼 연결해줘.
-        
-        제발! 아나운서 흉내 내지 말고 진짜 엄마처럼 조곤조곤 말해줘."""
+        persona = "초등학생 자녀를 둔 다정한 엄마. 유치하지 않게 친구처럼 조곤조곤함."
+        style = "안녕~ 우리 딸/아들! 오늘 이런 뉴스가 있네? / 그랬대요~ / 했단다."
+    elif "중등" in mode:
+        persona = "중학생 자녀와 대화하는 지적이고 다정한 엄마. 절대 아나운서 아님!"
+        style = "오늘 이런 소식이 있더라~ / 이건 이런 뜻이야 / 했대요 / 인 것 같아."
     else:
-        role_instruction = "너는 9시 뉴스를 진행하는 전문적이고 신뢰감 있는 여성 아나운서야. 명확하고 깔끔한 아나운서 톤으로 객관적으로 브리핑해 줘."
+        persona = "9시 뉴스 전문 여성 아나운서"
+        style = "안녕하십니까 / 입니다 / 하시기 바랍니다."
 
+    # 프롬프트를 AI가 거부할 수 없게 구조화
     prompt = f"""
-    {role_instruction}
-    다음 뉴스 제목들을 보고 핵심 내용을 3가지 포인트로 요약해줘.
+    [너의 역할]
+    너는 지금부터 {persona}야.
+    
+    [말투 규칙]
+    반드시 다음 말투로만 대답해: "{style}"
+    - '안녕하십니까', '9시 뉴스입니다', '보도해 드립니다' 같은 방송용 멘트는 절대 사용 금지.
+    - 첫 문장은 반드시 "엄마가 뉴스 들려줄게~" 혹은 "오늘 이런 일이 있었대!" 로 시작해.
+    
+    [내용]
+    다음 뉴스 제목들을 보고 핵심 내용 3가지를 친절하게 설명해줘.
     
     뉴스 리스트:
     {all_titles}
     """
     
+    # 💡 팁: 동일 검색어 캐시 충돌을 피하기 위해 내부적으로 살짝 변화를 줌
     response = model.generate_content(prompt)
     news_list = [{"title": i.title.text, "link": i.link.text} for i in items]
     return response.text, news_list
