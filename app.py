@@ -15,12 +15,7 @@ with st.sidebar:
     level_mode = st.radio("요약 눈높이", ("초등학생용 🎒", "중학생용 📝", "전문가용 💼"), index=0)
     st.info("💡 실시간 뉴스 요약! (엄마뉴스)")
 
-# 기존: st.title("🗞️ 엄마가 읽어주는 뉴스 브리핑")
-# 👇 이 아래에 바로 추가
-if 'summary' not in st.session_state:
-    st.session_state.summary = None
-if 'news_data' not in st.session_state:
-    st.session_state.news_data = []
+st.title("🗞️ 엄마가 읽어주는 뉴스 브리핑")
 
 # 2. AI 모델 설정
 try:
@@ -160,27 +155,24 @@ def fetch_and_summarize(query, mode):
     except Exception as e:
         return f"뉴스를 불러오는 중 오류 발생: {e}", []
 
-# 6. 실행 부분 (기존의 if user_input: 부분을 지우고 이걸 넣으세요)
-with st.form("search_form"):
-    col1, col2 = st.columns([4, 1])
-    with col1:
-        user_input = st.text_input("🔍 궁금한 뉴스 키워드를 입력하세요")
-    with col2:
-        submit_button = st.form_submit_button("요약 시작")
-
-if submit_button and user_input:
-    with st.spinner("엄마가 뉴스를 읽어보고 있어요..."):
+# 6. 실행
+if user_input:
+    with st.spinner(f"'{user_input}' 뉴스 가져오는 중..."):
         summary, news_data = fetch_and_summarize(user_input, level_mode)
-        # 결과값을 세션(메모리)에 저장
-        st.session_state.summary = summary
-        st.session_state.news_data = news_data
 
-# 결과가 있을 때만 화면에 표시 (음성을 들어도 사라지지 않음)
-if st.session_state.summary:
-    st.success(f"✅ {level_mode} 맞춤 브리핑")
-    st.markdown(st.session_state.summary)
-    
-    if st.button("🎧 엄마 목소리로 듣기"):
-        with st.spinner("음성을 만드는 중입니다..."):
-            audio_bytes = run_async_tts(st.session_state.summary)
-            st.audio(audio_bytes, format='audio/mp3', autoplay=True)
+        if summary:
+            st.success(f"✅ {level_mode} 브리핑 완료!")
+            st.markdown(summary)
+            st.write("---")
+
+            if st.button("🎧 음성 듣기"):
+                with st.spinner("음성 생성 중..."):
+                    audio_bytes = run_async_tts(summary)
+                    st.audio(audio_bytes, format='audio/mp3', autoplay=True)
+
+            with st.expander("🔗 원본 뉴스 보기"):
+                for n in news_data:
+                    st.markdown(f"- [{n['title']}]({n['link']})")
+
+        else:
+            st.warning("뉴스를 찾을 수 없습니다.")
