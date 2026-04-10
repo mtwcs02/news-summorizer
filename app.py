@@ -61,7 +61,7 @@ async def generate_high_quality_speech(text):
     return audio_bytes
 
 # 🧠 뉴스 수집 및 요약 함수
-@st.cache_data(ttl=60, show_spinner=False)
+@st.cache_data(ttl=1800, show_spinner=False)
 def fetch_and_summarize(query, mode):
     q = query if query != "오늘의 주요 뉴스" else "대한민국 주요 뉴스 속보 when:1d"
     url = f"https://news.google.com/rss/search?q={q}&hl=ko&gl=KR&ceid=KR:ko"
