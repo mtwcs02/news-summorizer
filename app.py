@@ -24,6 +24,7 @@ try:
         st.error("API 키가 설정되지 않았습니다.")
         st.stop()
     genai.configure(api_key=api_key)
+    # 2026년 기준 최신 모델명 사용 (사용자님 설정 유지)
     model = genai.GenerativeModel('gemini-2.5-flash-lite')
 except Exception as e:
     st.error(f"⚠️ API 키 설정 오류: {e}")
@@ -51,9 +52,9 @@ for i, stock in enumerate(my_stocks):
     cols2[i].button(stock, key=f"stock_{i}", on_click=update_query, args=(stock,), use_container_width=True)
 
 st.divider()
-user_input = st.text_input("🔍 직접 검색 (검색어를 입력하고 엔터를 치세요)", key="search_query")
+user_input = st.text_input("🔍 직접 검색 (검색어를 입력하고 엔터를 치세요)", key="search_query_input", value=st.session_state.search_query)
 
-# 4. 음성 생성 함수 (안정화)
+# 4. 음성 생성 함수
 async def generate_high_quality_speech(text):
     voice = "ko-KR-SunHiNeural"
     communicate = edge_tts.Communicate(text, voice)
@@ -75,10 +76,10 @@ def run_async_tts(text):
     try:
         audio_bytes = loop.run_until_complete(generate_high_quality_speech(text))
     finally:
-        loop.close()  # 에러가 나더라도 루프를 안전하게 닫음
+        loop.close()
     return audio_bytes
 
-# 5. 뉴스 수집 및 요약 함수 (시작점 및 따옴표 완전 교정본)
+# 5. 뉴스 수집 및 요약 함수
 @st.cache_data(ttl=1800, show_spinner=False)
 def fetch_and_summarize(query, mode):
     try:
@@ -99,19 +100,16 @@ def fetch_and_summarize(query, mode):
         titles = list(dict.fromkeys([i.title.text for i in items]))
         all_titles = "\n".join([f"- {t}" for t in titles])
 
-    # --- [2단계: 모드 설정 (사용자님 수정 버전 반영)] ---
+        # --- [2단계: 모드 설정 (함수 내부로 정렬)] ---
         if "초등" in mode:
             role_name = "다정한 엄마"
             content_rule = """
-            - 뉴스 딱 2개만 선정해서 요약할 것.
-            - [분량 제한]: 각 뉴스당 공백 포함 **250자 내외**, 전체 합쳐서 **500자 내외**로 아주 짧고 명확하게 작성할 것.
-            - [설명 방식]: 비유를 먼저 하고 용어(묘수, 극단적 등)는 나중에 쉽게 풀어서 알려줄 것.
-            - [부드러운 표현]: '나라 망한다' 대신 '시험 걱정하느라 다른 걸 못 보는 마음'처럼 순화할 것.
-            - [구성]: (1) 뉴스 팩트 전달 (2) 아이 눈높이의 비유 (3) 이 뉴스가 왜 중요한지 순서로 작성할 것.
-            - [필수]: 답변의 마지막 줄에 반드시 **'오늘의 생각 질문: [질문 내용]'** 형식으로 질문을 작성할 것.
-            - [핵심 비칙]: 뉴스 단어를 그대로 쓰지 말고, 9살 아이의 일상(장난감, 놀이터, 양치질)으로 비유할 것.
-            - [공감 먼저]: 뉴스를 전하기 전 "아이들이 속상할 수도 있지만~" 같은 공감 문구를 한 줄 넣을 것.
-            - [GPT 챌린지]: 방금 보여준 예시처럼 다정하고 서사적인 느낌을 최대한 살릴 것.
+            - 뉴스는 딱 2개만 선정할 것.
+            - [분량 규칙]: 각 뉴스는 공백 포함 200~230자, 전체 합쳐서 400~450자 엄수.
+            - [구성 순서]: 1) 간단 사실 전달 2) 아이 눈높이 비유 3) 왜 중요한지 정리.
+            - [표현]: 부정적 표현 금지, 9살 아이의 일상(장난감, 놀이터 등)으로 비유할 것.
+            - [시작]: 첫 줄 다음에 "조금 낯설 수 있지만 엄마가 쉽게 이야기해줄게."와 같은 공감 문구 포함.
+            - [마무리]: 마지막 줄에 반드시 '오늘의 생각 질문: [질문]' 형식 포함.
             """
             start_msg = "엄마가 오늘 뉴스 들려줄게."
             end_msg = "오늘 하루도 즐겁게 지내! 사랑해."
@@ -119,26 +117,24 @@ def fetch_and_summarize(query, mode):
         elif "중학생" in mode:
             role_name = "사춘기 아들을 둔 지적인 엄마"
             content_rule = """
-            - 핵심 뉴스 3개 선정해서 요약할 것.
-            - [분량 제한]: 전체 공백 포함 **700자 내외**를 반드시 지킬 것.
-            - [말투]: 절대 딱딱한 앵커 말투 금지. '~란다', '~했대', '~인 것 같아' 같은 다정하고 지적인 구어체를 유지할 것.
-            - [구성]: 사실 전달 -> 사회적 의미(왜 중요한지) -> 생각할 거리(교훈) 순서로 논리적으로 구성할 것.
-            - [지식]: 어려운 시사 용어(보증금, 안보, 환율 등)는 반드시 한 문장으로 친절하게 풀이할 것.
-            - [마무리]: 브리핑 끝에 뉴스 내용과 관련된 논리적인 **'오늘의 생각 질문'**을 1개 포함할 것.
+            - 핵심 뉴스 3개 선정.
+            - [분량 제한]: 전체 공백 포함 700자 내외 엄수.
+            - [말투]: 지적인 구어체(~란다, ~했대). 앵커 말투 금지.
+            - [지식]: 어려운 용어(보증금, 환율 등)는 반드시 한 문장으로 친절하게 풀이.
+            - [마무리]: 마지막 줄에 뉴스 관련 논리적인 '오늘의 생각 질문' 포함.
             """
-            start_msg = "오늘 뉴스를 들려줄게"
-            end_msg = "오늘 하루도 네가 가진 멋진 생각들을 펼치며 즐겁게 보내렴!사랑해!"
+            start_msg = "오늘 뉴스를 들려줄게."
+            end_msg = "오늘 하루도 네가 가진 멋진 생각들을 펼치며 즐겁게 보내렴! 사랑해!"
 
         else:
             role_name = "전문 뉴스 아나운서"
             content_rule = """
-            - 주요 뉴스 3개 선정.
-            - 객관적이고 정확한 정보 전달 (수치와 통계 활용).
-            - 전문 용어를 사용하여 신뢰감 있는 뉴스 브리핑 톤 유지.
-            - [분량]: 전체 1000자 내외로 상세히 전달.
+            - 주요 뉴스 3개 선정. 객관적 정보 전달.
+            - 전문 용어와 수치 활용. 신뢰감 있는 톤.
+            - [분량]: 전체 1000자 내외.
             """
-            start_msg = "안녕하십니까. 2026년 4월 13일 뉴스 브리핑입니다."
-            end_msg = "이상으로 뉴스를 마치겠습니다. 시청해 주셔서 감사합니다."
+            start_msg = "안녕하십니까. 뉴스 브리핑입니다."
+            end_msg = "이상으로 뉴스를 마치겠습니다. 감사합니다."
 
         # --- [3단계: AI에게 보내는 최종 명령] ---
         prompt = f"""
@@ -163,24 +159,27 @@ def fetch_and_summarize(query, mode):
     except Exception as e:
         return f"뉴스를 불러오는 중 오류 발생: {e}", []
 
-# 6. 실행
-if user_input:
-    with st.spinner(f"'{user_input}' 뉴스 가져오는 중..."):
-        summary, news_data = fetch_and_summarize(user_input, level_mode)
+# 6. 실행 로직 (유저 입력이 있을 때만 작동)
+# 텍스트 입력창과 버튼 클릭 모두 대응하도록 st.session_state.search_query 활용
+final_query = st.session_state.search_query if st.session_state.search_query else user_input
+
+if final_query:
+    with st.spinner(f"'{final_query}' 뉴스 가져오는 중..."):
+        summary, news_data = fetch_and_summarize(final_query, level_mode)
 
         if summary:
             st.success(f"✅ {level_mode} 브리핑 완료!")
-            st.markdown(summary)
+            st.markdown(f"### 🎙️ {level_mode} 맞춤 요약")
+            st.write(summary)
             st.write("---")
 
-            if st.button("🎧 음성 듣기"):
-                with st.spinner("음성 생성 중..."):
+            if st.button("🎧 음성으로 듣기"):
+                with st.spinner("다정한 엄마 목소리 생성 중..."):
                     audio_bytes = run_async_tts(summary)
                     st.audio(audio_bytes, format='audio/mp3', autoplay=True)
 
-            with st.expander("🔗 원본 뉴스 보기"):
+            with st.expander("🔗 원본 뉴스 링크 보기"):
                 for n in news_data:
                     st.markdown(f"- [{n['title']}]({n['link']})")
-
         else:
-            st.warning("뉴스를 찾을 수 없습니다.")
+            st.warning("관련 뉴스를 찾지 못했어요. 다른 키워드로 검색해보세요.")
